@@ -26,7 +26,7 @@ A document-aware chat agent built entirely on Cloudflare's platform.
 
     npx wrangler deploy
 
-Live at: **https://ragharsh.workers.dev**  ← replace with your real URL
+Live at: **https://ragharsh.workers.dev**
 
 ## Known limitations
 
@@ -34,6 +34,3 @@ Live at: **https://ragharsh.workers.dev**  ← replace with your real URL
 - No authentication yet — anyone with the URL can use it.
 - Text and plain documents only in this version.
 
-## Prompt history
-
-See `PROMPT_HISTORY.md` — this project was built with AI assistance, as permitted by the assignment, and the full prompt history is included per their instructions.
