@@ -19,10 +19,12 @@
   ],
   "durable_objects": {
     "bindings": [
-      { "name": "ChatAgent", "class_name": "ChatAgent" }
+      { "name": "ChatAgent", "class_name": "ChatAgent" },
+      { "name": "USERS", "class_name": "UserStore" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }
+    { "tag": "v1", "new_sqlite_classes": ["ChatAgent"] },
+    { "tag": "v2", "new_sqlite_classes": ["UserStore"] }
   ]
 }

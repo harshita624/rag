@@ -4,203 +4,630 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Docs Chat Agent</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background:#f4f3ee; color:#0f2418; }
-  textarea { width:100%; min-height:120px; padding:10px; border-radius:10px; border:1px solid #0f24181f; font-family:inherit; box-sizing:border-box; }
-  button { background:#0f2418; color:#fff; border:none; padding:8px 16px; border-radius:20px; cursor:pointer; }
+  :root { --ink:#0f2418; --paper:#f4f3ee; --line:#0f24181f; --muted:#0f241899; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { font-family:system-ui,sans-serif; background:var(--paper); color:var(--ink); }
+  button { background:var(--ink); color:#fff; border:none; padding:8px 16px; border-radius:20px; cursor:pointer; font:inherit; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button.icon { background:transparent; color:var(--muted); padding:2px 8px; border-radius:8px; }
   button:disabled { opacity:0.5; cursor:not-allowed; }
-  #chat { border:1px solid #0f24181f; border-radius:12px; padding:16px; min-height:300px; max-height:500px; overflow-y:auto; margin-top:16px; background:#fff; }
-  .msg { margin-bottom:10px; white-space:pre-wrap; }
-  .user { text-align:right; color:#1f4029; }
-  .row { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
-  .row input[type=text], .row input[type=password] { flex:1; padding:10px; border-radius:20px; border:1px solid #0f24181f; }
-  #app { display:none; }
-  #error { color:#a11; margin-top:8px; }
+  input[type=text], input[type=email], input[type=password] { width:100%; padding:10px 14px; border-radius:20px; border:1px solid var(--line); font:inherit; background:#fff; color:var(--ink); }
+  textarea { width:100%; min-height:80px; padding:10px; border-radius:12px; border:1px solid var(--line); font:inherit; background:#fff; color:var(--ink); resize:vertical; }
+  .hidden { display:none !important; }
+
+  #auth { min-height:100%; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .card { width:100%; max-width:380px; background:#fff; border:1px solid var(--line); border-radius:16px; padding:24px; }
+  .card h1 { margin:0 0 4px; font-size:24px; }
+  .card p { margin:0; color:var(--muted); font-size:14px; }
+  .tabs { display:flex; gap:8px; margin:16px 0; }
+  .tabs button { flex:1; }
+  .tabs button.active { background:var(--ink); color:#fff; }
+  .field { margin-bottom:10px; }
+  #authBtn { width:100%; margin-top:4px; }
+  #authError { color:#a11; min-height:20px; margin-top:10px; font-size:14px; }
+
+  #app { height:100%; display:grid; grid-template-columns:320px 1fr; }
+  #sidebar { border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:#ebe9e1; }
+  .side-head { padding:14px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .side-head span { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .side-head button { padding:4px 12px; font-size:13px; }
+  .side-section { padding:0 14px; }
+  .side-section button { width:100%; }
+  .side-title { font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin:14px 0 6px; }
+  #chatList { overflow-y:auto; flex:1; min-height:80px; padding:0 8px; }
+  .item { display:flex; align-items:center; justify-content:space-between; gap:6px; padding:8px 10px; border-radius:10px; cursor:pointer; }
+  .item:hover { background:#0f24180d; }
+  .item.active { background:#0f241818; }
+  .item .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; font-size:14px; }
+  .item small { color:var(--muted); white-space:nowrap; }
+  .item input[type=checkbox] { margin:0; cursor:pointer; flex:none; }
+  .empty { color:var(--muted); font-size:13px; padding:6px 10px; }
+  #docPanel { border-top:1px solid var(--line); padding:4px 14px 14px; max-height:58%; overflow-y:auto; }
+  #docList { margin:0 -6px 8px; }
+  .hint-small { font-size:12px; color:var(--muted); margin:-2px 0 6px; }
+  #docPanel details { margin:8px 0; font-size:14px; }
+  #docPanel summary { cursor:pointer; margin-bottom:6px; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  #fileInput { max-width:100%; font-size:13px; }
+  #uploadStatus { font-size:13px; color:var(--muted); }
+
+  #main { display:flex; flex-direction:column; min-height:0; height:100%; }
+  #topbar { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+  #menuBtn { display:none; padding:4px 12px; }
+  #chatTitle { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #scopeInfo { margin-left:auto; font-size:13px; color:var(--muted); white-space:nowrap; }
+  #chat { flex:1; overflow-y:auto; padding:16px; }
+  .hint { color:var(--muted); text-align:center; margin-top:60px; }
+  .msg { max-width:80%; margin-bottom:12px; padding:10px 14px; border-radius:14px; white-space:pre-wrap; line-height:1.45; word-wrap:break-word; }
+  .msg.user { margin-left:auto; background:var(--ink); color:#fff; }
+  .msg.assistant { background:#fff; border:1px solid var(--line); }
+  .msg.pending { color:var(--muted); }
+  .sources { font-size:12px; color:var(--muted); margin-top:8px; }
+  #composer { padding:12px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
+
+  #modal { position:fixed; inset:0; background:#0f241899; display:flex; align-items:center; justify-content:center; padding:16px; z-index:20; }
+  #modalCard { background:#fff; border-radius:16px; width:100%; max-width:760px; max-height:85vh; display:flex; flex-direction:column; }
+  #modalHead { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); gap:8px; }
+  #modalTitle { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #modalBody { margin:0; padding:16px 18px; overflow:auto; white-space:pre-wrap; word-wrap:break-word; font-family:inherit; font-size:14px; line-height:1.5; }
+
+  @media (max-width:760px) {
+    #app { grid-template-columns:1fr; }
+    #sidebar { position:fixed; top:0; bottom:0; left:0; width:88%; max-width:340px; z-index:10; transform:translateX(-100%); transition:transform 0.2s; }
+    #sidebar.open { transform:none; }
+    #menuBtn { display:inline-block; }
+    .msg { max-width:92%; }
+    #scopeInfo { display:none; }
+  }
 </style>
 </head>
 <body>
-  <h1>Docs Chat Agent</h1>
 
-  <!-- LOGIN -->
-  <div id="login">
-    <p><small>Enter your access code to continue.</small></p>
-    <div class="row">
-      <input id="accessCode" type="password" placeholder="Access code" />
-      <button id="loginBtn">Log in</button>
+<div id="auth">
+  <div class="card">
+    <h1>Docs Chat Agent</h1>
+    <p>Chat with your own documents.</p>
+    <div class="tabs">
+      <button id="tabLogin" class="active">Log in</button>
+      <button id="tabSignup" class="ghost">Sign up</button>
     </div>
-    <div id="error"></div>
+    <div class="field hidden" id="nameField">
+      <input id="name" type="text" placeholder="Your name" autocomplete="name" />
+    </div>
+    <div class="field">
+      <input id="email" type="email" placeholder="Email" autocomplete="email" />
+    </div>
+    <div class="field">
+      <input id="password" type="password" placeholder="Password (min 8 characters)" autocomplete="current-password" />
+    </div>
+    <button id="authBtn">Log in</button>
+    <div id="authError"></div>
   </div>
+</div>
 
-  <!-- APP -->
-  <div id="app">
-    <p><small>Paste text or choose a file (PDF, TXT, MD), index it, then ask about it. Conversation memory persists per session.</small>
-      <button id="logoutBtn" style="float:right;padding:4px 12px;">Log out</button></p>
-
-    <textarea id="docText" placeholder="Paste document text here..."></textarea>
-    <div class="row">
-      <input type="file" id="fileInput" accept=".pdf,.txt,.md" />
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="side-head">
+      <span id="userName"></span>
+      <button id="logoutBtn" class="ghost">Log out</button>
     </div>
-    <div class="row">
-      <button id="uploadBtn">Index</button>
-      <span id="uploadStatus"></span>
+    <div class="side-section">
+      <button id="newChatBtn">+ New chat</button>
+      <div class="side-title">Chats</div>
     </div>
+    <div id="chatList"></div>
+    <div id="docPanel">
+      <div class="side-title">Documents</div>
+      <div class="hint-small">Tick the documents this chat should use. Click a name to read it.</div>
+      <div id="docList"></div>
+      <details>
+        <summary>Paste text instead</summary>
+        <textarea id="docText" placeholder="Paste document text here..."></textarea>
+      </details>
+      <div class="row">
+        <input type="file" id="fileInput" accept=".pdf,.txt,.md" multiple />
+      </div>
+      <div class="row">
+        <button id="uploadBtn">Index</button>
+        <span id="uploadStatus"></span>
+      </div>
+    </div>
+  </aside>
 
+  <main id="main">
+    <div id="topbar">
+      <button id="menuBtn" class="ghost">Menu</button>
+      <strong id="chatTitle">New chat</strong>
+      <span id="scopeInfo"></span>
+    </div>
     <div id="chat"></div>
-    <div class="row">
-      <input id="msgInput" type="text" placeholder="Ask a question..." />
+    <div id="composer">
+      <input id="msgInput" type="text" placeholder="Ask a question about your selected documents..." />
       <button id="sendBtn">Send</button>
     </div>
+  </main>
+</div>
+
+<div id="modal" class="hidden">
+  <div id="modalCard">
+    <div id="modalHead">
+      <span id="modalTitle"></span>
+      <button id="modalClose" class="ghost">Close</button>
+    </div>
+    <pre id="modalBody"></pre>
   </div>
+</div>
 
 <script>
-  const sessionId = localStorage.getItem("session_id") || crypto.randomUUID();
-  localStorage.setItem("session_id", sessionId);
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
+  const MAX_PDF_PAGES = 40;
   const $ = (id) => document.getElementById(id);
   const chatEl = $("chat");
-
-  async function safeJson(res) {
-    try { return await res.json(); } catch { return {}; }
-  }
-
-  function showLogin(msg = "") {
-    $("login").style.display = "block";
-    $("app").style.display = "none";
-    $("error").textContent = msg;
-  }
-
-  function showApp() {
-    $("login").style.display = "none";
-    $("app").style.display = "block";
-    loadHistory();
-  }
-
-  function addMsg(role, text) {
-    const div = document.createElement("div");
-    div.className = "msg " + role;
-    div.textContent = (role === "user" ? "You: " : "Agent: ") + text;
-    chatEl.appendChild(div);
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-
-  async function checkSession() {
-    try {
-      const res = await fetch("/api/session");
-      const data = await safeJson(res);
-      data.authenticated ? showApp() : showLogin();
-    } catch {
-      showLogin("Could not reach the server.");
-    }
-  }
-
-  $("loginBtn").onclick = async () => {
-    const accessCode = $("accessCode").value.trim();
-    if (!accessCode) return;
-    try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessCode }),
-      });
-      const data = await safeJson(res);
-      if (res.ok) {
-        $("accessCode").value = "";
-        showApp();
-      } else {
-        showLogin(data.error || "Login failed.");
-      }
-    } catch {
-      showLogin("Could not reach the server.");
-    }
-  };
-  $("accessCode").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") $("loginBtn").click();
-  });
-
-  $("logoutBtn").onclick = async () => {
-    await fetch("/api/logout", { method: "POST" });
-    showLogin();
+  const state = {
+    mode: "login",
+    chats: [],
+    docs: [],
+    selected: new Set(),
+    activeId: null,
+    sending: false,
   };
 
-  async function loadHistory() {
-    try {
-      const res = await fetch(`/api/chat/${sessionId}/history`);
-      if (res.status === 401) return showLogin("Session expired.");
-      const data = await safeJson(res);
-      chatEl.innerHTML = "";
-      for (const m of data.messages || []) addMsg(m.role, m.content);
-    } catch {
-      /* ignore */
+  async function api(path, { method = "GET", json, auth = true } = {}) {
+    const options = { method, headers: {} };
+    if (json !== undefined) {
+      options.headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(json);
     }
+    const res = await fetch(path, options);
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (res.status === 401 && auth) {
+      showAuth("Session expired. Please log in again.");
+      throw new Error("Unauthorized");
+    }
+    if (!res.ok) throw new Error(data.error || "Request failed.");
+    return data;
   }
 
-  $("uploadBtn").onclick = async () => {
-    const text = $("docText").value.trim();
-    const file = $("fileInput").files[0];
-    const status = $("uploadStatus");
+  function setAuthError(msg) {
+    $("authError").textContent = msg || "";
+  }
 
-    if (!text && !file) {
-      status.textContent = "Paste some text or choose a file first.";
+  function setMode(mode) {
+    state.mode = mode;
+    const login = mode === "login";
+    $("tabLogin").className = login ? "active" : "ghost";
+    $("tabSignup").className = login ? "ghost" : "active";
+    $("nameField").classList.toggle("hidden", login);
+    $("authBtn").textContent = login ? "Log in" : "Create account";
+    $("password").autocomplete = login ? "current-password" : "new-password";
+    setAuthError("");
+  }
+
+  function showAuth(msg) {
+    $("app").classList.add("hidden");
+    $("auth").classList.remove("hidden");
+    setAuthError(msg);
+  }
+
+  function showApp(user) {
+    $("auth").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("userName").textContent = user.name || user.email;
+  }
+
+  function closeSidebar() {
+    $("sidebar").classList.remove("open");
+  }
+
+  function renderMessages(messages) {
+    chatEl.innerHTML = "";
+    if (!messages.length) {
+      const hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = "Index a document, tick it in the sidebar, then ask a question.";
+      chatEl.appendChild(hint);
       return;
     }
+    for (const m of messages) addMsg(m.role, m.content);
+  }
 
-    status.textContent = "Indexing...";
-    $("uploadBtn").disabled = true;
-
-    try {
-      let res;
-      if (file) {
-        const fd = new FormData();
-        fd.append("file", file);
-        res = await fetch("/api/upload", { method: "POST", body: fd });
-      } else {
-        res = await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        });
-      }
-
-      if (res.status === 401) return showLogin("Session expired.");
-      const data = await safeJson(res);
-      status.textContent = res.ok
-        ? `Indexed ${data.chunks} chunks.`
-        : (data.error || "Upload failed.");
-    } catch {
-      status.textContent = "Upload failed.";
-    } finally {
-      $("uploadBtn").disabled = false;
+  function addMsg(role, text, sources, used) {
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    div.textContent = text;
+    const parts = [];
+    if (used && used.documents) {
+      parts.push(
+        "Read " + used.documents + " document" + (used.documents === 1 ? "" : "s") +
+        " (" + used.chars.toLocaleString() + " characters)"
+      );
     }
-  };
+    if (sources && sources.length) parts.push("Sources: " + sources.join(", "));
+    if (parts.length) {
+      const s = document.createElement("div");
+      s.className = "sources";
+      s.textContent = parts.join(" | ");
+      div.appendChild(s);
+    }
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+    return div;
+  }
+
+  function renderChats() {
+    const list = $("chatList");
+    list.innerHTML = "";
+    if (!state.chats.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No chats yet.";
+      list.appendChild(empty);
+      return;
+    }
+    for (const chat of state.chats) {
+      const row = document.createElement("div");
+      row.className = "item" + (chat.id === state.activeId ? " active" : "");
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = chat.title;
+      const del = document.createElement("button");
+      del.className = "icon";
+      del.textContent = "x";
+      del.title = "Delete chat";
+      del.onclick = (e) => { e.stopPropagation(); removeChat(chat.id); };
+      row.onclick = () => openChat(chat.id);
+      row.append(name, del);
+      list.appendChild(row);
+    }
+  }
+
+  async function loadChats() {
+    const data = await api("/api/chats");
+    state.chats = data.chats || [];
+    renderChats();
+  }
+
+  async function openChat(id) {
+    state.activeId = id;
+    renderChats();
+    closeSidebar();
+    const chat = state.chats.find((c) => c.id === id);
+    $("chatTitle").textContent = chat ? chat.title : "Chat";
+    try {
+      const data = await api(`/api/chats/${id}/messages`);
+      renderMessages(data.messages || []);
+    } catch (err) {
+      if (err.message !== "Unauthorized") renderMessages([]);
+    }
+  }
+
+  function newChat() {
+    state.activeId = null;
+    $("chatTitle").textContent = "New chat";
+    renderMessages([]);
+    renderChats();
+    closeSidebar();
+    $("msgInput").focus();
+  }
+
+  async function removeChat(id) {
+    if (!confirm("Delete this chat?")) return;
+    try {
+      await api(`/api/chats/${id}`, { method: "DELETE" });
+      state.chats = state.chats.filter((c) => c.id !== id);
+      if (state.activeId === id) newChat();
+      else renderChats();
+    } catch (err) {
+      if (err.message !== "Unauthorized") alert(err.message);
+    }
+  }
+
+  function updateScope() {
+    if (!state.docs.length) {
+      $("scopeInfo").textContent = "No documents indexed";
+      return;
+    }
+    $("scopeInfo").textContent =
+      "Searching " + state.selected.size + " of " + state.docs.length + " document" + (state.docs.length === 1 ? "" : "s");
+  }
 
   async function send() {
+    if (state.sending) return;
     const input = $("msgInput");
     const message = input.value.trim();
     if (!message) return;
 
-    addMsg("user", message);
-    input.value = "";
+    state.sending = true;
     $("sendBtn").disabled = true;
+    input.value = "";
 
     try {
-      const res = await fetch(`/api/chat/${sessionId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
-      });
+      if (!state.activeId) {
+        const created = await api("/api/chats", { method: "POST" });
+        state.chats.unshift(created.chat);
+        state.activeId = created.chat.id;
+        chatEl.innerHTML = "";
+        renderChats();
+      }
 
-      if (res.status === 401) return showLogin("Session expired.");
-      const data = await safeJson(res);
-      addMsg("assistant", res.ok ? data.reply : (data.error || "Something went wrong."));
-    } catch {
-      addMsg("assistant", "Could not reach the server.");
+      const hint = chatEl.querySelector(".hint");
+      if (hint) hint.remove();
+
+      addMsg("user", message);
+      const pending = addMsg("assistant", "Thinking...");
+      pending.classList.add("pending");
+
+      try {
+        const data = await api(`/api/chats/${state.activeId}/messages`, {
+          method: "POST",
+          json: { message, docIds: [...state.selected] },
+        });
+        pending.remove();
+        addMsg("assistant", data.reply, data.sources, data.used);
+        if (data.chat) {
+          state.chats = state.chats.map((c) => (c.id === data.chat.id ? data.chat : c));
+          state.chats.sort((a, b) => b.updatedAt - a.updatedAt);
+          $("chatTitle").textContent = data.chat.title;
+          renderChats();
+        }
+      } catch (err) {
+        if (err.message !== "Unauthorized") pending.textContent = err.message;
+      }
+    } catch (err) {
+      if (err.message !== "Unauthorized") addMsg("assistant", err.message);
     } finally {
+      state.sending = false;
       $("sendBtn").disabled = false;
+      input.focus();
     }
   }
 
+  function setUploadStatus(msg) {
+    $("uploadStatus").textContent = msg || "";
+  }
+
+  function renderDocs() {
+    const list = $("docList");
+    list.innerHTML = "";
+    if (!state.docs.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No documents yet.";
+      list.appendChild(empty);
+      updateScope();
+      return;
+    }
+    for (const doc of state.docs) {
+      const row = document.createElement("div");
+      row.className = "item";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = state.selected.has(doc.id);
+      box.title = "Use this document in chat";
+      box.onclick = (e) => e.stopPropagation();
+      box.onchange = () => {
+        if (box.checked) state.selected.add(doc.id);
+        else state.selected.delete(doc.id);
+        updateScope();
+      };
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = doc.filename;
+      name.title = "Click to read";
+      const meta = document.createElement("small");
+      meta.textContent = doc.chars.toLocaleString() + " chars";
+      const del = document.createElement("button");
+      del.className = "icon";
+      del.textContent = "x";
+      del.title = "Delete document";
+      del.onclick = (e) => { e.stopPropagation(); removeDoc(doc.id); };
+      row.onclick = () => viewDoc(doc.id);
+      row.append(box, name, meta, del);
+      list.appendChild(row);
+    }
+    updateScope();
+  }
+
+  async function loadDocs() {
+    const data = await api("/api/documents");
+    state.docs = data.documents || [];
+    state.selected = new Set(state.docs.map((d) => d.id));
+    renderDocs();
+  }
+
+  async function viewDoc(id) {
+    try {
+      const data = await api(`/api/documents/${id}`);
+      $("modalTitle").textContent = data.document.filename;
+      $("modalBody").textContent = data.document.text;
+      $("modal").classList.remove("hidden");
+    } catch (err) {
+      if (err.message !== "Unauthorized") setUploadStatus(err.message);
+    }
+  }
+
+  async function removeDoc(id) {
+    if (!confirm("Delete this document and its search index?")) return;
+    try {
+      await api(`/api/documents/${id}`, { method: "DELETE" });
+      state.docs = state.docs.filter((d) => d.id !== id);
+      state.selected.delete(id);
+      renderDocs();
+    } catch (err) {
+      if (err.message !== "Unauthorized") setUploadStatus(err.message);
+    }
+  }
+
+  async function extractPdf(file) {
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const pages = Math.min(pdf.numPages, MAX_PDF_PAGES);
+    const texts = [];
+    let chars = 0;
+
+    for (let p = 1; p <= pages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const t = content.items.map((i) => i.str).join(" ").replace(/\s+/g, " ").trim();
+      texts.push(t);
+      chars += t.length;
+    }
+
+    if (chars >= pages * 40) {
+      return texts.map((t, i) => `--- Page ${i + 1} ---\n${t}`).join("\n\n");
+    }
+
+    const out = [];
+    let readable = 0;
+    for (let p = 1; p <= pages; p++) {
+      setUploadStatus(`Reading ${file.name}: page ${p} of ${pages}...`);
+      const page = await pdf.getPage(p);
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(2, 1600 / base.width);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      const image = canvas.toDataURL("image/jpeg", 0.8);
+
+      let text = "";
+      try {
+        const data = await api("/api/ocr", { method: "POST", json: { image } });
+        text = data.text || "";
+      } catch (err) {
+        if (err.message === "Unauthorized") throw err;
+      }
+      readable += text.length;
+      out.push(`--- Page ${p} ---\n${text}`);
+    }
+
+    if (readable < 20) throw new Error("Could not read any text from " + file.name + ".");
+    return out.join("\n\n");
+  }
+
+  async function readFile(file) {
+    const lower = file.name.toLowerCase();
+    if (file.type === "application/pdf" || lower.endsWith(".pdf")) return extractPdf(file);
+    if (file.type.startsWith("text/") || lower.endsWith(".txt") || lower.endsWith(".md")) {
+      return file.text();
+    }
+    throw new Error("Unsupported file type: " + file.name);
+  }
+
+  async function addDocument(filename, text) {
+    const data = await api("/api/documents", { method: "POST", json: { filename, text } });
+    state.docs.unshift(data.document);
+    state.selected.add(data.document.id);
+    renderDocs();
+    return data.document;
+  }
+
+  async function uploadDoc() {
+    const pasted = $("docText").value.trim();
+    const files = [...$("fileInput").files];
+    if (!pasted && !files.length) {
+      setUploadStatus("Choose files or paste some text first.");
+      return;
+    }
+
+    $("uploadBtn").disabled = true;
+    let done = 0;
+
+    try {
+      for (const file of files) {
+        setUploadStatus(`Reading ${file.name}...`);
+        const text = await readFile(file);
+        setUploadStatus(`Indexing ${file.name}...`);
+        await addDocument(file.name, text);
+        done++;
+      }
+      if (pasted) {
+        setUploadStatus("Indexing pasted text...");
+        await addDocument("Pasted text " + new Date().toLocaleString(), pasted);
+        done++;
+      }
+      $("docText").value = "";
+      $("fileInput").value = "";
+      setUploadStatus("Indexed " + done + " document" + (done === 1 ? "" : "s") + ".");
+    } catch (err) {
+      if (err.message !== "Unauthorized") {
+        setUploadStatus((done ? "Indexed " + done + ". " : "") + err.message);
+      }
+    } finally {
+      $("uploadBtn").disabled = false;
+    }
+  }
+
+  async function boot(user) {
+    showApp(user);
+    state.chats = [];
+    state.docs = [];
+    state.selected = new Set();
+    state.activeId = null;
+    setUploadStatus("");
+    await Promise.all([loadChats(), loadDocs()]);
+    newChat();
+  }
+
+  async function submitAuth() {
+    const email = $("email").value.trim();
+    const password = $("password").value;
+    const name = $("name").value.trim();
+    if (!email || !password) {
+      setAuthError("Enter your email and password.");
+      return;
+    }
+    $("authBtn").disabled = true;
+    try {
+      const data = await api(state.mode === "login" ? "/api/login" : "/api/signup", {
+        method: "POST",
+        json: { email, password, name },
+        auth: false,
+      });
+      $("password").value = "";
+      setAuthError("");
+      await boot(data.user);
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      $("authBtn").disabled = false;
+    }
+  }
+
+  async function logout() {
+    try { await api("/api/logout", { method: "POST", auth: false }); } catch {}
+    showAuth("");
+  }
+
+  async function checkSession() {
+    try {
+      const data = await api("/api/session", { auth: false });
+      if (data.authenticated) await boot(data.user);
+      else showAuth("");
+    } catch {
+      showAuth("Could not reach the server.");
+    }
+  }
+
+  $("tabLogin").onclick = () => setMode("login");
+  $("tabSignup").onclick = () => setMode("signup");
+  $("authBtn").onclick = submitAuth;
+  $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
+  $("email").addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
+  $("logoutBtn").onclick = logout;
+  $("newChatBtn").onclick = newChat;
+  $("menuBtn").onclick = () => $("sidebar").classList.toggle("open");
+  $("uploadBtn").onclick = uploadDoc;
   $("sendBtn").onclick = send;
   $("msgInput").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+  $("modalClose").onclick = () => $("modal").classList.add("hidden");
+  $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) $("modal").classList.add("hidden"); });
 
   checkSession();
 </script>
