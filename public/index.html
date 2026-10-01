@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Docs Chat Agent</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; background:#f4f3ee; color:#0f2418; }
+  textarea { width:100%; min-height:120px; padding:10px; border-radius:10px; border:1px solid #0f24181f; font-family:inherit; box-sizing:border-box; }
+  button { background:#0f2418; color:#fff; border:none; padding:8px 16px; border-radius:20px; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  #chat { border:1px solid #0f24181f; border-radius:12px; padding:16px; min-height:300px; max-height:500px; overflow-y:auto; margin-top:16px; background:#fff; }
+  .msg { margin-bottom:10px; white-space:pre-wrap; }
+  .user { text-align:right; color:#1f4029; }
+  .row { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+  .row input[type=text], .row input[type=password] { flex:1; padding:10px; border-radius:20px; border:1px solid #0f24181f; }
+  #app { display:none; }
+  #error { color:#a11; margin-top:8px; }
+</style>
+</head>
+<body>
+  <h1>Docs Chat Agent</h1>
+
+  <!-- LOGIN -->
+  <div id="login">
+    <p><small>Enter your access code to continue.</small></p>
+    <div class="row">
+      <input id="accessCode" type="password" placeholder="Access code" />
+      <button id="loginBtn">Log in</button>
+    </div>
+    <div id="error"></div>
+  </div>
+
+  <!-- APP -->
+  <div id="app">
+    <p><small>Paste text or choose a file (PDF, TXT, MD), index it, then ask about it. Conversation memory persists per session.</small>
+      <button id="logoutBtn" style="float:right;padding:4px 12px;">Log out</button></p>
+
+    <textarea id="docText" placeholder="Paste document text here..."></textarea>
+    <div class="row">
+      <input type="file" id="fileInput" accept=".pdf,.txt,.md" />
+    </div>
+    <div class="row">
+      <button id="uploadBtn">Index</button>
+      <span id="uploadStatus"></span>
+    </div>
+
+    <div id="chat"></div>
+    <div class="row">
+      <input id="msgInput" type="text" placeholder="Ask a question..." />
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+<script>
+  const sessionId = localStorage.getItem("session_id") || crypto.randomUUID();
+  localStorage.setItem("session_id", sessionId);
+
+  const $ = (id) => document.getElementById(id);
+  const chatEl = $("chat");
+
+  async function safeJson(res) {
+    try { return await res.json(); } catch { return {}; }
+  }
+
+  function showLogin(msg = "") {
+    $("login").style.display = "block";
+    $("app").style.display = "none";
+    $("error").textContent = msg;
+  }
+
+  function showApp() {
+    $("login").style.display = "none";
+    $("app").style.display = "block";
+    loadHistory();
+  }
+
+  function addMsg(role, text) {
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    div.textContent = (role === "user" ? "You: " : "Agent: ") + text;
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  async function checkSession() {
+    try {
+      const res = await fetch("/api/session");
+      const data = await safeJson(res);
+      data.authenticated ? showApp() : showLogin();
+    } catch {
+      showLogin("Could not reach the server.");
+    }
+  }
+
+  $("loginBtn").onclick = async () => {
+    const accessCode = $("accessCode").value.trim();
+    if (!accessCode) return;
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessCode }),
+      });
+      const data = await safeJson(res);
+      if (res.ok) {
+        $("accessCode").value = "";
+        showApp();
+      } else {
+        showLogin(data.error || "Login failed.");
+      }
+    } catch {
+      showLogin("Could not reach the server.");
+    }
+  };
+  $("accessCode").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("loginBtn").click();
+  });
+
+  $("logoutBtn").onclick = async () => {
+    await fetch("/api/logout", { method: "POST" });
+    showLogin();
+  };
+
+  async function loadHistory() {
+    try {
+      const res = await fetch(`/api/chat/${sessionId}/history`);
+      if (res.status === 401) return showLogin("Session expired.");
+      const data = await safeJson(res);
+      chatEl.innerHTML = "";
+      for (const m of data.messages || []) addMsg(m.role, m.content);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  $("uploadBtn").onclick = async () => {
+    const text = $("docText").value.trim();
+    const file = $("fileInput").files[0];
+    const status = $("uploadStatus");
+
+    if (!text && !file) {
+      status.textContent = "Paste some text or choose a file first.";
+      return;
+    }
+
+    status.textContent = "Indexing...";
+    $("uploadBtn").disabled = true;
+
+    try {
+      let res;
+      if (file) {
+        const fd = new FormData();
+        fd.append("file", file);
+        res = await fetch("/api/upload", { method: "POST", body: fd });
+      } else {
+        res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+      }
+
+      if (res.status === 401) return showLogin("Session expired.");
+      const data = await safeJson(res);
+      status.textContent = res.ok
+        ? `Indexed ${data.chunks} chunks.`
+        : (data.error || "Upload failed.");
+    } catch {
+      status.textContent = "Upload failed.";
+    } finally {
+      $("uploadBtn").disabled = false;
+    }
+  };
+
+  async function send() {
+    const input = $("msgInput");
+    const message = input.value.trim();
+    if (!message) return;
+
+    addMsg("user", message);
+    input.value = "";
+    $("sendBtn").disabled = true;
+
+    try {
+      const res = await fetch(`/api/chat/${sessionId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+
+      if (res.status === 401) return showLogin("Session expired.");
+      const data = await safeJson(res);
+      addMsg("assistant", res.ok ? data.reply : (data.error || "Something went wrong."));
+    } catch {
+      addMsg("assistant", "Could not reach the server.");
+    } finally {
+      $("sendBtn").disabled = false;
+    }
+  }
+
+  $("sendBtn").onclick = send;
+  $("msgInput").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+
+  checkSession();
+</script>
+</body>
+</html>
